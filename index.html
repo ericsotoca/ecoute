@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>V2- Voice2Text Long Session - Édition segmentée</title>
+<title>Voice2Text Corrigé - Enregistrement Fiable</title>
 <style>
   body { font-family: Arial, sans-serif; padding: 20px; max-width: 700px; margin: auto; }
   button { padding: 10px 20px; margin: 5px; font-size: 16px; }
@@ -13,7 +13,7 @@
 </head>
 <body>
 
-<h1>Voice2Text Long Session (mode segmenté)</h1>
+<h1>Voice2Text Long Session (Mode Corrigé)</h1>
 
 <button id="startBtn">Démarrer l'enregistrement</button>
 <button id="stopBtn" disabled>Arrêter</button>
@@ -25,11 +25,8 @@
 <script>
 let recognition;
 let isRecording = false;
-let fullTranscript = localStorage.getItem("fullTranscript") || '';
-let segmentTimer;
-let mediaRecorder;
-let audioChunks = [];
-const segmentDuration = 5 * 60 * 1000; // 5 minutes en millisecondes
+// Texte final et validé
+let fullTranscript = localStorage.getItem("fullTranscript") || ''; 
 
 const transcriptionArea = document.getElementById('transcription');
 const statusEl = document.getElementById('status');
@@ -43,20 +40,40 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   recognition.interimResults = true;
   recognition.lang = 'fr-FR';
 
+  // === ÉVÉNEMENT PRINCIPAL POUR LA TRANSCRIPTION ===
   recognition.onresult = function(event) {
     let interimTranscript = '';
+    // On parcourt tous les résultats depuis le dernier événement
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      interimTranscript += event.results[i][0].transcript;
+      const transcript = event.results[i][0].transcript;
+      // Si le résultat est final, on le stocke définitivement
+      if (event.results[i].isFinal) {
+        fullTranscript += transcript;
+      } else {
+        // Sinon, c'est un résultat intermédiaire
+        interimTranscript += transcript;
+      }
     }
+    // On met à jour l'affichage avec le texte final + le texte intermédiaire en cours
     transcriptionArea.value = fullTranscript + interimTranscript;
   };
 
+  // === GESTION DU REDÉMARRAGE AUTOMATIQUE ===
   recognition.onend = function() {
+    // Si l'enregistrement doit continuer, on relance la reconnaissance
     if (isRecording) {
-      fullTranscript += transcriptionArea.value.slice(fullTranscript.length);
-      recognition.start(); // redémarre la session automatiquement
+      recognition.start();
     }
   };
+  
+  recognition.onerror = function(event) {
+      console.error("Erreur de reconnaissance vocale :", event.error);
+      // En cas d'erreur 'no-speech', on peut vouloir redémarrer aussi
+      if (isRecording && event.error === 'no-speech') {
+          recognition.start();
+      }
+  }
+
 } else {
   alert("Votre navigateur ne supporte pas la Web Speech API.");
 }
@@ -66,49 +83,30 @@ const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const saveBtn = document.getElementById('saveBtn');
 
-startBtn.onclick = async () => {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
+startBtn.onclick = () => {
+  if (isRecording) return;
+  isRecording = true;
+  recognition.start();
+  statusEl.textContent = "Enregistrement en cours...";
 
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = handleSegmentStop;
-
-    mediaRecorder.start();
-    recognition.start();
-    isRecording = true;
-    statusEl.textContent = "Enregistrement en cours...";
-
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    saveBtn.disabled = true;
-
-    // Déclenche le découpage automatique des segments
-    segmentTimer = setInterval(() => {
-      if (isRecording) {
-        mediaRecorder.stop(); // stoppe le segment
-        mediaRecorder.start(); // relance un nouveau segment
-      }
-    }, segmentDuration);
-  } catch (err) {
-    alert("Erreur d'accès au micro : " + err.message);
-  }
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  saveBtn.disabled = true;
 };
 
 stopBtn.onclick = () => {
+  if (!isRecording) return;
   isRecording = false;
-  recognition.stop();
-  clearInterval(segmentTimer);
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
-  }
-  fullTranscript += transcriptionArea.value.slice(fullTranscript.length);
+  recognition.stop(); // Déclenchera l'événement onend
+  statusEl.textContent = "Enregistrement arrêté.";
+  
+  // Met à jour la sauvegarde finale avec la dernière valeur
+  fullTranscript = transcriptionArea.value;
   localStorage.setItem("fullTranscript", fullTranscript);
+
   startBtn.disabled = false;
   stopBtn.disabled = true;
   saveBtn.disabled = false;
-  statusEl.textContent = "Enregistrement arrêté.";
 };
 
 saveBtn.onclick = () => {
@@ -122,29 +120,16 @@ saveBtn.onclick = () => {
   document.body.removeChild(link);
 };
 
-// === TRAITEMENT D'UN SEGMENT AUDIO ===
-async function handleSegmentStop() {
-  const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-  audioChunks = []; // libère la mémoire
-
-  // Simulation de transcription segmentée :
-  // on pourrait envoyer audioBlob à un moteur externe (Whisper)
-  // Ici on se contente d'ajouter un marqueur
-  fullTranscript += "\n\n--- Segment de 5 min terminé ---\n";
-  transcriptionArea.value = fullTranscript;
-  localStorage.setItem("fullTranscript", fullTranscript);
-
-  // Efface le blob du segment pour libérer l’espace
-  URL.revokeObjectURL(audioBlob);
-}
 
 // === SAUVEGARDE AUTO TOUTES LES 5s ===
 setInterval(() => {
-  if (fullTranscript.length > 0) {
+  if (isRecording) {
+    // On met à jour la variable globale avec le contenu actuel
     fullTranscript = transcriptionArea.value;
     localStorage.setItem("fullTranscript", fullTranscript);
   }
 }, 5000);
+
 </script>
 
 </body>
