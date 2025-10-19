@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Voice2Text Corrigé - Enregistrement Fiable</title>
+<title>V3 - Voice2Text Fiable Sans Répétition</title>
 <style>
   body { font-family: Arial, sans-serif; padding: 20px; max-width: 700px; margin: auto; }
   button { padding: 10px 20px; margin: 5px; font-size: 16px; }
@@ -13,7 +13,7 @@
 </head>
 <body>
 
-<h1>Voice2Text Long Session (v3)</h1>
+<h1>Voice2Text Long Session (Mode Fiable)</h1>
 
 <button id="startBtn">Démarrer l'enregistrement</button>
 <button id="stopBtn" disabled>Arrêter</button>
@@ -25,12 +25,12 @@
 <script>
 let recognition;
 let isRecording = false;
-// Texte final et validé
-let fullTranscript = localStorage.getItem("fullTranscript") || ''; 
+// Texte final et validé. Uniquement modifié par les résultats finaux.
+let finalTranscript = localStorage.getItem("finalTranscript") || ''; 
 
 const transcriptionArea = document.getElementById('transcription');
 const statusEl = document.getElementById('status');
-transcriptionArea.value = fullTranscript;
+transcriptionArea.value = finalTranscript;
 
 // === INITIALISATION RECONNAISSANCE VOCALE ===
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -43,35 +43,39 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   // === ÉVÉNEMENT PRINCIPAL POUR LA TRANSCRIPTION ===
   recognition.onresult = function(event) {
     let interimTranscript = '';
-    // On parcourt tous les résultats depuis le dernier événement
+    
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript;
-      // Si le résultat est final, on le stocke définitivement
+      
+      // Si le résultat est final, on le stocke définitivement avec un espace.
       if (event.results[i].isFinal) {
-        fullTranscript += transcript;
+        finalTranscript += transcript + ' ';
       } else {
-        // Sinon, c'est un résultat intermédiaire
+        // Sinon, c'est un résultat intermédiaire pour l'affichage.
         interimTranscript += transcript;
       }
     }
-    // On met à jour l'affichage avec le texte final + le texte intermédiaire en cours
-    transcriptionArea.value = fullTranscript + interimTranscript;
+    // On met à jour l'affichage avec le texte final + le texte intermédiaire en cours.
+    transcriptionArea.value = finalTranscript + interimTranscript;
   };
 
   // === GESTION DU REDÉMARRAGE AUTOMATIQUE ===
   recognition.onend = function() {
-    // Si l'enregistrement doit continuer, on relance la reconnaissance
     if (isRecording) {
       recognition.start();
     }
   };
   
   recognition.onerror = function(event) {
-      console.error("Erreur de reconnaissance vocale :", event.error);
-      // En cas d'erreur 'no-speech', on peut vouloir redémarrer aussi
-      if (isRecording && event.error === 'no-speech') {
-          recognition.start();
+    console.error("Erreur de reconnaissance vocale :", event.error);
+    // On peut tenter de redémarrer si l'enregistrement est toujours actif
+    if (isRecording && event.error !== 'aborted') {
+      try {
+        recognition.start();
+      } catch(e) {
+        console.error("Impossible de redémarrer la reconnaissance.", e);
       }
+    }
   }
 
 } else {
@@ -97,12 +101,11 @@ startBtn.onclick = () => {
 stopBtn.onclick = () => {
   if (!isRecording) return;
   isRecording = false;
-  recognition.stop(); // Déclenchera l'événement onend
+  recognition.stop();
   statusEl.textContent = "Enregistrement arrêté.";
   
-  // Met à jour la sauvegarde finale avec la dernière valeur
-  fullTranscript = transcriptionArea.value;
-  localStorage.setItem("fullTranscript", fullTranscript);
+  // Sauvegarde finale : on prend tout ce qui est affiché.
+  localStorage.setItem("finalTranscript", transcriptionArea.value);
 
   startBtn.disabled = false;
   stopBtn.disabled = true;
@@ -120,15 +123,13 @@ saveBtn.onclick = () => {
   document.body.removeChild(link);
 };
 
-
-// === SAUVEGARDE AUTO TOUTES LES 5s ===
+// === SAUVEGARDE AUTO TOUTES LES 10s ===
+// Sauvegarde uniquement le texte final confirmé pour éviter les bugs.
 setInterval(() => {
   if (isRecording) {
-    // On met à jour la variable globale avec le contenu actuel
-    fullTranscript = transcriptionArea.value;
-    localStorage.setItem("fullTranscript", fullTranscript);
+    localStorage.setItem("finalTranscript", finalTranscript);
   }
-}, 5000);
+}, 10000);
 
 </script>
 
