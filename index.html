@@ -3,16 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Voice2Text Live</title>
+<title>Voice2Text Live - Transcription longue durée</title>
 <style>
   body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
-  button { padding: 10px 20px; margin: 5px; }
-  textarea { width: 100%; height: 300px; margin-top: 10px; }
+  button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+  textarea { width: 100%; height: 400px; margin-top: 10px; font-size: 16px; }
 </style>
 </head>
 <body>
 
 <h1>Voice2Text Live</h1>
+
 <button id="startBtn">Démarrer l'enregistrement</button>
 <button id="stopBtn" disabled>Arrêter</button>
 <button id="saveBtn" disabled>Sauvegarder le texte</button>
@@ -22,24 +23,30 @@
 <script>
 let recognition;
 let isRecording = false;
+let fullTranscript = localStorage.getItem("fullTranscript") || '';
+document.getElementById('transcription').value = fullTranscript;
 
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
+  recognition.continuous = true; 
+  recognition.interimResults = true; 
   recognition.lang = 'fr-FR';
 
   recognition.onresult = function(event) {
-    let transcript = '';
+    let interimTranscript = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript;
+      interimTranscript += event.results[i][0].transcript;
     }
-    document.getElementById('transcription').value = transcript;
+    document.getElementById('transcription').value = fullTranscript + interimTranscript;
   };
 
   recognition.onend = function() {
-    if (isRecording) recognition.start(); // redémarre automatiquement
+    if (isRecording) {
+      // Conserver le texte déjà transcrit avant redémarrage
+      fullTranscript += document.getElementById('transcription').value.slice(fullTranscript.length);
+      recognition.start();
+    }
   };
 } else {
   alert("Votre navigateur ne supporte pas la Web Speech API.");
@@ -64,6 +71,9 @@ stopBtn.onclick = () => {
   startBtn.disabled = false;
   stopBtn.disabled = true;
   saveBtn.disabled = false;
+  // Mettre à jour fullTranscript final
+  fullTranscript += document.getElementById('transcription').value.slice(fullTranscript.length);
+  localStorage.setItem("fullTranscript", fullTranscript);
 };
 
 saveBtn.onclick = () => {
@@ -76,6 +86,14 @@ saveBtn.onclick = () => {
   link.click();
   document.body.removeChild(link);
 };
+
+// Sauvegarde automatique toutes les 5 secondes
+setInterval(() => {
+  if (fullTranscript.length > 0) {
+    fullTranscript = document.getElementById('transcription').value;
+    localStorage.setItem("fullTranscript", fullTranscript);
+  }
+}, 5000);
 </script>
 
 </body>
